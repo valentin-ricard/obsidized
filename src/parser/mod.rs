@@ -1,10 +1,10 @@
 use crate::ast::Expression;
 use crate::parser::utils::{fenced, fenced_char, style, style_char};
 use nom::branch::alt;
-use nom::bytes::complete::{tag, take_till, take_until};
-use nom::character::complete::{char, line_ending, newline};
-use nom::combinator::{all_consuming, complete, map, map_parser};
-use nom::sequence::{pair, preceded, tuple};
+use nom::bytes::complete::{tag, take_till};
+use nom::character::complete::{char};
+use nom::combinator::{all_consuming, map};
+use nom::sequence::{pair, preceded};
 use nom::IResult;
 
 mod utils;
@@ -150,7 +150,7 @@ pub fn parse(input: &str) -> Result<Vec<Expression>, nom::Err<nom::error::Error<
 #[cfg(test)]
 mod tests {
     use crate::ast::Expression;
-    use crate::parser::{italic, parse};
+    use crate::parser::{parse};
     use stringify;
 
     macro_rules! test_specific {

@@ -1,7 +1,7 @@
 use crate::ast::{Document, Expression};
-use std::io::BufWriter;
+
 use std::io::{Error, Write};
-use std::ptr::write;
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -74,14 +74,14 @@ fn convert_expression<T: Write>(expr: &Expression, output: &mut T) -> Result<(),
                 "<{tag} class=\"heading header-{level}\">{text}</div>"
             )?;
         }
-        Expression::CodeBlock { lang, contents } => {
+        Expression::CodeBlock { lang: _, contents: _ } => {
             // TODO: Using https://docs.rs/tree-sitter-highlight/latest/tree_sitter_highlight/struct.HtmlRenderer.html
             //  implement syntax highlighting.
         }
-        Expression::TaskList(elements) => {
+        Expression::TaskList(_elements) => {
             // TODO: Support this.
         }
-        Expression::Task { completed, content } => {
+        Expression::Task { completed: _, content: _ } => {
             // TODO: Support this.
         }
         Expression::BlockQuote(contents) => {
@@ -144,7 +144,7 @@ fn convert_expression<T: Write>(expr: &Expression, output: &mut T) -> Result<(),
 mod tests {
     use crate::ast::{Document, Expression};
     use crate::converter::convert;
-    use std::io::{BufWriter, Write};
+    
 
     fn compile_ast(contents: Vec<Expression>) -> String {
         let document = Document {
@@ -152,7 +152,7 @@ mod tests {
             contents,
         };
         let mut buf = Vec::new();
-        let result = convert(&document, &mut buf).expect("An error occurred");
+        let _result = convert(&document, &mut buf).expect("An error occurred");
 
         let output = std::str::from_utf8(buf.as_slice()).unwrap().to_string();
         output
