@@ -40,6 +40,8 @@ pub enum Expression<'a> {
     Bold(Vec<Expression<'a>>),
     StrikeThrough(Vec<Expression<'a>>),
     Highlight(Vec<Expression<'a>>),
+    Block(Vec<Expression<'a>>),
+    LineBreak,
     HorizontalBar,
     ListElement {
         style: &'a str,

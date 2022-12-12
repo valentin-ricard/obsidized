@@ -1,134 +1,56 @@
+use std::mem::{swap, take};
 use crate::ast::Expression;
-use crate::parser::utils::{fenced, fenced_char, style, style_char};
+use crate::parser::utils::{fenced, new_line, style};
 use nom::branch::alt;
-use nom::bytes::complete::{tag, take_till};
-use nom::character::complete::{char};
-use nom::combinator::{all_consuming, map};
-use nom::sequence::{pair, preceded};
-use nom::IResult;
+use nom::bytes::complete::{is_a, tag, take_till, take_until};
+use nom::character::complete::{char, space0};
+use nom::character::is_newline;
+use nom::combinator::{all_consuming, eof, map, value};
+use nom::sequence::{pair, preceded, tuple};
+use nom::{ExtendInto, InputTakeAtPosition, IResult};
+use nom::multi::{many1, many_till};
+use crate::ast::Expression::Block;
 
 mod utils;
+mod directive;
 
-// Generate the actual parsers here
+type ParseResult<'a, T> = IResult<&'a str, T>;
+type StrParseResult<'a> = ParseResult<'a, &'a str>;
+type NestedParseResult<'a> = ParseResult<'a, Vec<Expression<'a>>>;
 
-fn internal_link(input: &str) -> IResult<&str, &str> {
-    fenced("[[", "]]")(input)
-}
+pub fn parse(
+    input: &str,
+) -> Result<Vec<Expression>, nom::Err<nom::error::Error<&str>>> {
+    // We treat each line separately:
+    let mut contents: Vec<Expression> = Vec::new();
+    let mut current_block = Vec::with_capacity(4);
 
-fn markdown_link(input: &str) -> IResult<&str, (&str, &str)> {
-    pair(fenced_char('[', ']'), fenced_char('(', ')'))(input)
-}
-
-fn triple_backtick(input: &str) -> IResult<&str, (&str, &str)> {
-    let (remaining, inner) = fenced("```", "```")(input)?;
-
-    let (contents, lang) = take_till(|c| c == '\n')(inner)?;
-    // Remove \r if it exists
-    Ok((
-        remaining,
-        (lang.trim_end_matches('\r'), contents.trim_end()),
-    ))
-}
-
-fn single_backtick(input: &str) -> IResult<&str, &str> {
-    fenced_char('`', '`')(input)
-}
-
-fn single_dollar(input: &str) -> IResult<&str, &str> {
-    fenced_char('$', '$')(input)
-}
-
-fn bold(input: &str) -> IResult<&str, Vec<Expression>> {
-    alt((style("**"), style("__")))(input)
-}
-
-fn italic(input: &str) -> IResult<&str, Vec<Expression>> {
-    alt((style_char('*'), style_char('_')))(input)
-}
-
-fn strikethrough(input: &str) -> IResult<&str, Vec<Expression>> {
-    style("~~")(input)
-}
-
-fn highlight(input: &str) -> IResult<&str, Vec<Expression>> {
-    style("==")(input)
-}
-
-/// Parses `![alt](url)`
-fn remote_image(input: &str) -> IResult<&str, (&str, &str)> {
-    preceded(char('!'), markdown_link)(input)
-}
-
-/// Parses `![alt](url)`
-fn image(input: &str) -> IResult<&str, &str> {
-    preceded(char('!'), internal_link)(input)
-}
-
-fn directive(input: &str) -> IResult<&str, Expression> {
-    alt((
-        map(single_dollar, Expression::InlineMath),
-        map(internal_link, Expression::InternalLink),
-        map(remote_image, |(alt, url)| Expression::ExternalImage {
-            alt,
-            url,
-        }),
-        map(triple_backtick, |(lang, contents)| Expression::CodeBlock {
-            lang,
-            contents,
-        }),
-        map(single_backtick, Expression::InlineCode),
-        map(image, Expression::InternalImage),
-        map(bold, Expression::Bold),
-        map(italic, Expression::Italic),
-        map(strikethrough, Expression::StrikeThrough),
-        map(highlight, Expression::Highlight),
-    ))(input)
-}
-
-/// Parse a line of text, counting anything that doesn't match a directive as plain text.
-fn parse_inline(input: &str) -> IResult<&str, Vec<Expression>> {
-    let mut output = Vec::with_capacity(4);
-
-    let mut current_input = input;
-
-    while !current_input.is_empty() {
-        let mut found_directive = false;
-        for (current_index, _) in current_input.char_indices() {
-            //  println!("{} {}", current_index, current_input);
-            match directive(&current_input[current_index..]) {
-                Ok((remaining, parsed)) => {
-                    // println!("Matched {:?} remaining {}", parsed, remaining);
-                    let leading_text = &current_input[0..current_index];
-                    if !leading_text.is_empty() {
-                        output.push(Expression::Text(leading_text));
-                    }
-                    output.push(parsed);
-
-                    current_input = remaining;
-                    found_directive = true;
-                    break;
-                }
-                Err(nom::Err::Error(_)) => {
-                    // None of the parsers matched at the current position, so this character is just part of the text.
-                    // The iterator will go to the next character so there's nothing to do here.
-                }
-                Err(e) => {
-                    // On any other error, just return the error.
-                    return Err(e);
-                }
-            }
-        }
-
-        if !found_directive {
-            output.push(Expression::Text(current_input));
-            break;
+    for line in input.lines()  {
+        // First, if the line is empty,
+        if line.trim().is_empty() {
+            // We need to create a block
+            contents.push(Block(
+                take(&mut current_block)
+            ));
+        } else {
+            // We can simplify alt
+            // We need to check if the line is a quote
+            let (_, mut expressions)
+                = all_consuming(parse_inline)(line)?;
+            current_block.append(&mut expressions);
         }
     }
 
-    Ok(("", output))
+    // Push the last block
+    contents.push(Block(
+        take(&mut current_block)
+    ));
+    Ok(contents)
 }
 
-pub fn parse(input: &str) -> Result<Vec<Expression>, nom::Err<nom::error::Error<&str>>> {
+pub fn parse_block(
+    input: &str,
+) -> Result<Vec<Expression>, nom::Err<nom::error::Error<&str>>> {
     alt((
         map(all_consuming(tag("---")), |_| {
             vec![Expression::HorizontalBar]
@@ -142,15 +64,16 @@ pub fn parse(input: &str) -> Result<Vec<Expression>, nom::Err<nom::error::Error<
             vec![Expression::Attribute { name, value }]
         }),
          */
+        // Split it in
         all_consuming(parse_inline),
     ))(input)
-    .map(|(_, results)| results)
+        .map(|(_, results)| results)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::ast::Expression;
-    use crate::parser::{parse};
+    use crate::parser::parse;
     use stringify;
 
     macro_rules! test_specific {
@@ -222,6 +145,7 @@ mod tests {
             vec![Expression::InlineMath("b^2-4ac")]
         );
     }
+
     #[test]
     fn test_codeblock() {
         test_specific!(
@@ -234,5 +158,39 @@ mod tests {
                 contents: "\n        fn test() -> bool {}"
             }]
         );
+    }
+
+    #[test]
+    fn test_blocks() {
+        test_specific!(
+            hbar,
+            r#"This is a test
+            ---
+            This is another test"#,
+            vec![
+                Expression::Text("This is a test"),
+                Expression::HorizontalBar,
+                Expression::Text("This is another test")
+            ]
+        );
+
+        test_specific!(
+            line_break,
+            r#"This is a test
+
+            This is another test"#,
+            vec![
+                Expression::Text("This is a test"),
+                Expression::LineBreak,
+                Expression::Text("This is another test")
+            ]
+        );
+    }
+
+    #[test]
+    fn lifetime_test() {
+        let contents = "This is a test".to_string();
+
+        parse(&*contents).unwrap();
     }
 }

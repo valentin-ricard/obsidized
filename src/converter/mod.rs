@@ -12,11 +12,13 @@ pub enum ConversionError {
 
 pub fn convert<T: Write>(document: &Document, output: &mut T) -> Result<(), ConversionError> {
     // As we are at top level, we have to split it in blocks
+    writeln!(output, "<p class=\"block\">\n")?;
+
+    // TODO: Find a way to clear empty p blocks.
     for content in &document.contents {
-        writeln!(output, "<p class=\"block\">")?;
         convert_expression(content, output)?;
-        writeln!(output, "\n</p>")?;
     }
+    writeln!(output, "\n</p>")?;
     Ok(())
 }
 
@@ -74,14 +76,20 @@ fn convert_expression<T: Write>(expr: &Expression, output: &mut T) -> Result<(),
                 "<{tag} class=\"heading header-{level}\">{text}</div>"
             )?;
         }
-        Expression::CodeBlock { lang: _, contents: _ } => {
+        Expression::CodeBlock {
+            lang: _,
+            contents: _,
+        } => {
             // TODO: Using https://docs.rs/tree-sitter-highlight/latest/tree_sitter_highlight/struct.HtmlRenderer.html
             //  implement syntax highlighting.
         }
         Expression::TaskList(_elements) => {
             // TODO: Support this.
         }
-        Expression::Task { completed: _, content: _ } => {
+        Expression::Task {
+            completed: _,
+            content: _,
+        } => {
             // TODO: Support this.
         }
         Expression::BlockQuote(contents) => {
@@ -136,6 +144,12 @@ fn convert_expression<T: Write>(expr: &Expression, output: &mut T) -> Result<(),
         Expression::ListElement { .. } => {
             // TODO: Implement this.
         }
+        Expression::Block(_) => {
+            // TODO: Implement this.
+        }
+        Expression::LineBreak => {
+            write!(output, "</p>\n\n<p class\"block\">\n")?;
+        }
     }
     Ok(())
 }
@@ -144,7 +158,6 @@ fn convert_expression<T: Write>(expr: &Expression, output: &mut T) -> Result<(),
 mod tests {
     use crate::ast::{Document, Expression};
     use crate::converter::convert;
-    
 
     fn compile_ast(contents: Vec<Expression>) -> String {
         let document = Document {

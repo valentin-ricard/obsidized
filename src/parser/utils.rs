@@ -1,3 +1,4 @@
+use nom::branch::alt;
 use crate::ast::Expression;
 use crate::parser::parse_inline;
 use nom::bytes::complete::{tag, take_till, take_until, take_while1};
@@ -16,6 +17,13 @@ pub fn non_whitespace(c: char) -> bool {
 pub fn word(input: &str) -> IResult<&str, &str> {
     take_while1(non_whitespace)(input)
 }
+
+pub fn new_line<'a>(input: &'a str) -> IResult<&'a str, &'a str>{
+    alt((tag("\r\n"), tag("\n")))(input)
+}
+
+
+
 
 pub fn fenced<'a, 'b: 'a>(
     start: &'b str,
